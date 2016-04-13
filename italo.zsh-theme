@@ -1,186 +1,249 @@
-# vim:ft=zsh ts=2 sw=2 sts=2
 #
-# agnoster's Theme - https://gist.github.com/3712874
-# A Powerline-inspired theme for ZSH
+# ZSH Theme
 #
-# # README
-#
-# In order for this theme to render correctly, you will need a
-# [Powerline-patched font](https://github.com/Lokaltog/powerline-fonts).
-#
-# In addition, I recommend the
-# [Solarized theme](https://github.com/altercation/solarized/) and, if you're
-# using it on Mac OS X, [iTerm 2](http://www.iterm2.com/) over Terminal.app -
-# it has significantly better color fidelity.
-#
-# # Goals
-#
-# The aim of this theme is to only show you *relevant* information. Like most
-# prompts, it will only show git information when in a git working directory.
-# However, it goes a step further: everything from the current user and
-# hostname to whether the last call exited with an error to whether background
-# jobs are running in this shell will all be displayed automatically when
-# appropriate.
+# Author: Italo A. Casas
+# License: MIT
+# https://github.com/italoacasas/zsh-theme
 
-### Segment drawing
-# A few utility functions to make it easy and re-usable to draw segmented prompts
+NEWLINE='
+'
 
-CURRENT_BG='NONE'
+# PROMPT
+SPACESHIP_PROMPT_SYMBOL="${SPACESHIP_PROMPT_SYMBOL:-➔}"
+SPACESHIP_PROMPT_ADD_NEWLINE="${SPACESHIP_PROMPT_ADD_NEWLINE:-true}"
+SPACESHIP_PROMPT_SEPARATE_LINE="${SPACESHIP_PROMPT_SEPARATE_LINE:-true}"
+SPACESHIP_PROMPT_TRUNC="${SPACESHIP_PROMPT_TRUNC:-5}"
 
-# Fix odd char on mac
-if [[ `uname` == 'Darwin' ]]; then
-    SEGMENT_SEPARATOR='\ue0b0'
-else
-    SEGMENT_SEPARATOR=''
-fi
+# GIT
+SPACESHIP_GIT_SHOW="${SPACESHIP_GIT_SHOW:-true}"
+SPACESHIP_GIT_UNCOMMITTED="${SPACESHIP_GIT_UNCOMMITTED:-+}"
+SPACESHIP_GIT_UNSTAGED="${SPACESHIP_GIT_UNSTAGED:-!}"
+SPACESHIP_GIT_UNTRACKED="${SPACESHIP_GIT_UNTRACKED:-?}"
+SPACESHIP_GIT_STASHED="${SPACESHIP_GIT_STASHED:-●}"
+SPACESHIP_GIT_UNPULLED="${SPACESHIP_GIT_UNPULLED:-⇣}"
+SPACESHIP_GIT_UNPUSHED="${SPACESHIP_GIT_UNPUSHED:-⇡}"
 
-# Begin a segment
-# Takes two arguments, background and foreground. Both can be omitted,
-# rendering default background/foreground.
-prompt_segment() {
-  local bg fg
-  [[ -n $1 ]] && bg="%K{$1}" || bg="%k"
-  [[ -n $2 ]] && fg="%F{$2}" || fg="%f"
-  if [[ $CURRENT_BG != 'NONE' && $1 != $CURRENT_BG ]]; then
-    echo -n " %{$bg%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR%{$fg%} "
+# NVM
+SPACESHIP_NVM_SHOW="${SPACESHIP_NVM_SHOW:-true}"
+SPACESHIP_NVM_SYMBOL="${SPACESHIP_NVM_SYMBOL:-⬢}"
+
+# RUBY
+SPACESHIP_RUBY_SHOW="${SPACESHIP_RUBY_SHOW:-true}"
+SPACESHIP_RUBY_SYMBOL="${SPACESHIP_RUBY_SYMBOL:-💎}"
+
+# VENV
+SPACESHIP_VENV_SHOW="${SPACESHIP_VENV_SHOW:-true}"
+
+# Username.
+# If user is root, then pain it in red. Otherwise, just print in yellow.
+spaceship_user() {
+  if [[ $USER == 'root' ]]; then
+    echo -n "%{$fg_bold[red]%}"
   else
-    echo -n "%{$bg%}%{$fg%} "
+    echo -n "%{$fg_bold[yellow]%}"
   fi
-  CURRENT_BG=$1
-  [[ -n $3 ]] && echo -n $3
+  echo -n "%n"
+  echo -n "%{$reset_color%}"
 }
 
-# End the prompt, closing any open segments
-prompt_end() {
-  if [[ -n $CURRENT_BG ]]; then
-    echo -n " %{%k%F{$CURRENT_BG}%}$SEGMENT_SEPARATOR"
+# Username and SSH host
+# If there is an ssh connections, then show user and current machine.
+# If user is not $USER, then show username.
+spaceship_host() {
+  if [[ -n $SSH_CONNECTION ]]; then
+    echo -n "$(spaceship_user)"
+    echo -n " %Bat%b "
+    echo -n "%{$fg_bold[green]%}%m%{$reset_color%}"
+    echo -n " %Bin%b "
+  elif [[ $LOGNAME != $USER ]] || [[ $USER == 'root' ]]; then
+    echo -n "$(spaceship_user)"
+    echo -n " %Bin%b "
+    echo -n "%{$reset_color%}"
+  fi
+}
+
+# Current directory.
+# Return only three last items of path
+spaceship_current_dir() {
+  echo -n "%{$fg_bold[cyan]%}"
+  echo -n "%${SPACESHIP_PROMPT_TRUNC}~";
+  echo -n "%{$reset_color%}"
+}
+
+# Uncommitted changes.
+# Check for uncommitted changes in the index.
+spaceship_git_uncomitted() {
+  if ! $(git diff --quiet --ignore-submodules --cached); then
+    echo -n '+'
+  fi
+}
+
+# Unstaged changes.
+# Check for unstaged changes.
+spaceship_git_unstaged() {
+  if ! $(git diff-files --quiet --ignore-submodules --); then
+    echo -n '!'
+  fi
+}
+
+# Untracked files.
+# Check for untracked files.
+spaceship_git_untracked() {
+  if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+    echo -n '?'
+  fi
+}
+
+# Stashed changes.
+# Check for stashed changes.
+spaceship_git_stashed() {
+  if $(git rev-parse --verify refs/stash &>/dev/null); then
+    echo -n '●'
+  fi
+}
+
+# Unpushed and unpulled commits.
+# Get unpushed and unpulled commits from remote and draw arrows.
+spaceship_git_unpushed_unpulled() {
+  # check if there is an upstream configured for this branch
+  command git rev-parse --abbrev-ref @'{u}' &>/dev/null || return
+
+  local count
+  count="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
+  # exit if the command failed
+  (( !$? )) || return
+
+  # counters are tab-separated, split on tab and store as array
+  count=(${(ps:\t:)count})
+  local arrows left=${count[1]} right=${count[2]}
+
+  (( ${right:-0} > 0 )) && arrows+="${SPACESHIP_GIT_UNPULLED}"
+  (( ${left:-0} > 0 )) && arrows+="${SPACESHIP_GIT_UNPUSHED}"
+
+  [ -n $arrows ] && echo -n "${arrows}"
+}
+
+# Git status.
+# Collect indicators, git branch and pring string.
+spaceship_git_status() {
+  [[ $SPACESHIP_GIT_SHOW == false ]] && return
+
+  # Check if the current directory is in a Git repository.
+  command git rev-parse --is-inside-work-tree &>/dev/null || return
+
+  # Check if the current directory is in .git before running git checks.
+  if [[ "$(git rev-parse --is-inside-git-dir 2> /dev/null)" == 'false' ]]; then
+    # Ensure the index is up to date.
+    git update-index --really-refresh -q &>/dev/null
+
+    # String of indicators
+    local indicators=''
+
+    indicators+="$(spaceship_git_uncomitted)"
+    indicators+="$(spaceship_git_unstaged)"
+    indicators+="$(spaceship_git_untracked)"
+    indicators+="$(spaceship_git_stashed)"
+    indicators+="$(spaceship_git_unpushed_unpulled)"
+
+    [ -n "${indicators}" ] && indicators=" [${indicators}]";
+
+    echo -n " %Bon%b "
+    echo -n "%{$fg_bold[yellow]%}"
+    echo -n "$(git_current_branch)"
+    echo -n "%{$reset_color%}"
+    echo -n "%{$fg_bold[red]%}"
+    echo -n "%{$indicators%}"
+    echo -n "%{$reset_color%}"
+  fi
+}
+
+# Virtual environment.
+# Show current virtual environment (Python).
+spaceship_venv_status() {
+  [[ $SPACESHIP_VENV_SHOW == false ]] && return
+
+  # Check if the current directory running in Virtualenv
+  [ -n "$VIRTUAL_ENV" ] || return
+  echo -n " %Bin%b "
+  echo -n "%{$fg_bold[blue]%}"
+  echo -n "$(basename $VIRTUAL_ENV)"
+  echo -n "%{$reset_color%}"
+}
+
+# NVM
+# Show current version of node, exception system.
+spaceship_nvm_status() {
+  [[ $SPACESHIP_NVM_SHOW == false ]] && return
+
+  $(type nvm >/dev/null 2>&1) || return
+
+  local nvm_status=$(nvm current 2>/dev/null)
+  [[ "${nvm_status}" == "system" ]] && return
+  nvm_status=${nvm_status}
+
+  echo -n " %Bin%b "
+  echo -n "%{$fg_bold[green]%}"
+  echo -n "${SPACESHIP_NVM_SYMBOL} ${nvm_status}"
+  echo -n "%{$reset_color%}"
+}
+
+# Ruby
+# Show current version of Ruby
+spaceship_ruby_version() {
+  [[ $SPACESHIP_RUBY_SHOW == false ]] && return
+
+  if command -v rvm-prompt > /dev/null 2>&1; then
+    if rvm gemset list | grep "=> (default)"; then
+      ruby_version=$(rvm-prompt i v g)
+    fi
+  elif command -v chruby > /dev/null 2>&1; then
+    ruby_version=$(chruby | sed -n -e 's/ \* //p')
+  elif command -v rbenv > /dev/null 2>&1; then
+    ruby_version=$(rbenv version | sed -e 's/ (set.*$//')
   else
-    echo -n "%{%k%}"
+    return
   fi
-  echo -n "%{%f%}"
-  CURRENT_BG=''
+
+  echo -n " %Bin%b "
+  echo -n "%{$fg_bold[red]%}"
+  echo -n "${SPACESHIP_RUBY_SYMBOL}  ${ruby_version}"
+  echo -n "%{$reset_color%}"
 }
 
-### Prompt components
-# Each component will draw itself, and hide itself if no information needs to be shown
-
-# Context: user@hostname (who am I and where am I)
-prompt_context() {
-  if [[ "$USER" != "$DEFAULT_USER" || -n "$SSH_CLIENT" ]]; then
-    prompt_segment black default "%(!.%{%F{yellow}%}.)$USER@%m"
-  fi
+# Command prompt.
+# Pain $PROMPT_SYMBOL in red if previous command was fail and
+# pain in green if all OK.
+spaceship_return_status() {
+  echo -n "%(?.%{$fg[green]%}.%{$fg[red]%})"
+  echo -n "%B${SPACESHIP_PROMPT_SYMBOL}%b"
+  echo    "%{$reset_color%}"
 }
 
-# Git: branch/detached head, dirty status
-prompt_git() {
-  local ref dirty mode repo_path
-  repo_path=$(git rev-parse --git-dir 2>/dev/null)
-
-  if $(git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
-    dirty=$(parse_git_dirty)
-    ref=$(git symbolic-ref HEAD 2> /dev/null) || ref="➦ $(git show-ref --head -s --abbrev |head -n1 2> /dev/null)"
-    if [[ -n $dirty ]]; then
-      prompt_segment yellow black
-    else
-      prompt_segment green black
-    fi
-
-    if [[ -e "${repo_path}/BISECT_LOG" ]]; then
-      mode=" <B>"
-    elif [[ -e "${repo_path}/MERGE_HEAD" ]]; then
-      mode=" >M<"
-    elif [[ -e "${repo_path}/rebase" || -e "${repo_path}/rebase-apply" || -e "${repo_path}/rebase-merge" || -e "${repo_path}/../.dotest" ]]; then
-      mode=" >R>"
-    fi
-
-    setopt promptsubst
-    autoload -Uz vcs_info
-
-    zstyle ':vcs_info:*' enable git
-    zstyle ':vcs_info:*' get-revision true
-    zstyle ':vcs_info:*' check-for-changes true
-    zstyle ':vcs_info:*' stagedstr '✚'
-    zstyle ':vcs_info:git:*' unstagedstr '●'
-    zstyle ':vcs_info:*' formats ' %u%c'
-    zstyle ':vcs_info:*' actionformats ' %u%c'
-    vcs_info
-    echo -n "${ref/refs\/heads\// }${vcs_info_msg_0_%% }${mode}"
-  fi
+# Build prompt line
+spaceship_build_prompt() {
+  spaceship_host
+  spaceship_current_dir
+  spaceship_git_status
+  spaceship_nvm_status
+  spaceship_ruby_version
+  spaceship_venv_status
 }
 
-prompt_hg() {
-  local rev status
-  if $(hg id >/dev/null 2>&1); then
-    if $(hg prompt >/dev/null 2>&1); then
-      if [[ $(hg prompt "{status|unknown}") = "?" ]]; then
-        # if files are not added
-        prompt_segment red white
-        st='±'
-      elif [[ -n $(hg prompt "{status|modified}") ]]; then
-        # if any modification
-        prompt_segment yellow black
-        st='±'
-      else
-        # if working copy is clean
-        prompt_segment green black
-      fi
-      echo -n $(hg prompt "☿ {rev}@{branch}") $st
-    else
-      st=""
-      rev=$(hg id -n 2>/dev/null | sed 's/[^-0-9]//g')
-      branch=$(hg id -b 2>/dev/null)
-      if `hg st | grep -q "^\?"`; then
-        prompt_segment red black
-        st='±'
-      elif `hg st | grep -q "^[MA]"`; then
-        prompt_segment yellow black
-        st='±'
-      else
-        prompt_segment green black
-      fi
-      echo -n "☿ $rev@$branch" $st
-    fi
-  fi
-}
+# Compose PROMPT
+PROMPT=''
+[[ $SPACESHIP_PROMPT_ADD_NEWLINE == true ]] && PROMPT="$PROMPT$NEWLINE"
+PROMPT="$PROMPT"'$(spaceship_build_prompt) '
+[[ $SPACESHIP_PROMPT_SEPARATE_LINE == true ]] && PROMPT="$PROMPT$NEWLINE"
+PROMPT="$PROMPT"'$(spaceship_return_status) '
 
-# Dir: current working directory
-prompt_dir() {
-  prompt_segment blue black '%~'
-}
+# Set PS2 - continuation interactive prompt
+PS2="%{$fg_bold[yellow]%}"
+PS2+="%{$SPACESHIP_PROMPT_SYMBOL%} "
+PS2+="%{$reset_color%}"
 
-# Virtualenv: current working virtualenv
-prompt_virtualenv() {
-  local virtualenv_path="$VIRTUAL_ENV"
-  if [[ -n $virtualenv_path && -n $VIRTUAL_ENV_DISABLE_PROMPT ]]; then
-    prompt_segment blue black "(`basename $virtualenv_path`)"
-  fi
-}
-
-# Status:
-# - was there an error
-# - am I root
-# - are there background jobs?
-prompt_status() {
-  local symbols
-  symbols=()
-  [[ $RETVAL -ne 0 ]] && symbols+="%{%F{red}%}✘"
-  [[ $UID -eq 0 ]] && symbols+="%{%F{yellow}%}⚡"
-  [[ $(jobs -l | wc -l) -gt 0 ]] && symbols+="%{%F{cyan}%}⚙"
-
-  [[ -n "$symbols" ]] && prompt_segment black default "$symbols"
-}
-
-## Main prompt
-build_prompt() {
-  RETVAL=$?
-  prompt_status
-  prompt_virtualenv
-  prompt_dir
-  prompt_git
-  prompt_hg
-  prompt_end
-  
-}
-
-PROMPT='%{%f%b%k%}$(build_prompt)
-> %s'
+# LSCOLORS
+export LSCOLORS="Gxfxcxdxbxegedabagacab"
+export LS_COLORS='no=00:fi=00:di=01;34:ln=00;36:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=41;33;01:ex=00;32:ow=0;41:*.cmd=00;32:*.exe=01;32:*.com=01;32:*.bat=01;32:*.btm=01;32:*.dll=01;32:*.tar=00;31:*.tbz=00;31:*.tgz=00;31:*.rpm=00;31:*.deb=00;31:*.arj=00;31:*.taz=00;31:*.lzh=00;31:*.lzma=00;31:*.zip=00;31:*.zoo=00;31:*.z=00;31:*.Z=00;31:*.gz=00;31:*.bz2=00;31:*.tb2=00;31:*.tz2=00;31:*.tbz2=00;31:*.avi=01;35:*.bmp=01;35:*.fli=01;35:*.gif=01;35:*.jpg=01;35:*.jpeg=01;35:*.mng=01;35:*.mov=01;35:*.mpg=01;35:*.pcx=01;35:*.pbm=01;35:*.pgm=01;35:*.png=01;35:*.ppm=01;35:*.tga=01;35:*.tif=01;35:*.xbm=01;35:*.xpm=01;35:*.dl=01;35:*.gl=01;35:*.wmv=01;35:*.aiff=00;32:*.au=00;32:*.mid=00;32:*.mp3=00;32:*.ogg=00;32:*.voc=00;32:*.wav=00;32:*.patch=00;34:*.o=00;32:*.so=01;35:*.ko=01;31:*.la=00;33'
+# Zsh to use the same colors as ls
+# Link: http://superuser.com/a/707567
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
