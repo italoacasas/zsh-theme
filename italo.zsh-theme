@@ -27,13 +27,6 @@ SPACESHIP_GIT_UNPUSHED="${SPACESHIP_GIT_UNPUSHED:-⇡}"
 SPACESHIP_NVM_SHOW="${SPACESHIP_NVM_SHOW:-true}"
 SPACESHIP_NVM_SYMBOL="${SPACESHIP_NVM_SYMBOL:-⬢}"
 
-# RUBY
-SPACESHIP_RUBY_SHOW="${SPACESHIP_RUBY_SHOW:-true}"
-SPACESHIP_RUBY_SYMBOL="${SPACESHIP_RUBY_SYMBOL:-💎}"
-
-# VENV
-SPACESHIP_VENV_SHOW="${SPACESHIP_VENV_SHOW:-true}"
-
 # Username.
 # If user is root, then pain it in red. Otherwise, just print in yellow.
 spaceship_user() {
@@ -157,19 +150,6 @@ spaceship_git_status() {
   fi
 }
 
-# Virtual environment.
-# Show current virtual environment (Python).
-spaceship_venv_status() {
-  [[ $SPACESHIP_VENV_SHOW == false ]] && return
-
-  # Check if the current directory running in Virtualenv
-  [ -n "$VIRTUAL_ENV" ] || return
-  echo -n " %Bin%b "
-  echo -n "%{$fg_bold[blue]%}"
-  echo -n "$(basename $VIRTUAL_ENV)"
-  echo -n "%{$reset_color%}"
-}
-
 # NVM
 # Show current version of node, exception system.
 spaceship_nvm_status() {
@@ -184,29 +164,6 @@ spaceship_nvm_status() {
   echo -n " %Bin%b "
   echo -n "%{$fg_bold[green]%}"
   echo -n "${SPACESHIP_NVM_SYMBOL} ${nvm_status}"
-  echo -n "%{$reset_color%}"
-}
-
-# Ruby
-# Show current version of Ruby
-spaceship_ruby_version() {
-  [[ $SPACESHIP_RUBY_SHOW == false ]] && return
-
-  if command -v rvm-prompt > /dev/null 2>&1; then
-    if rvm gemset list | grep "=> (default)"; then
-      ruby_version=$(rvm-prompt i v g)
-    fi
-  elif command -v chruby > /dev/null 2>&1; then
-    ruby_version=$(chruby | sed -n -e 's/ \* //p')
-  elif command -v rbenv > /dev/null 2>&1; then
-    ruby_version=$(rbenv version | sed -e 's/ (set.*$//')
-  else
-    return
-  fi
-
-  echo -n " %Bin%b "
-  echo -n "%{$fg_bold[red]%}"
-  echo -n "${SPACESHIP_RUBY_SYMBOL}  ${ruby_version}"
   echo -n "%{$reset_color%}"
 }
 
@@ -225,8 +182,6 @@ spaceship_build_prompt() {
   spaceship_current_dir
   spaceship_git_status
   spaceship_nvm_status
-  spaceship_ruby_version
-  spaceship_venv_status
 }
 
 # Compose PROMPT
